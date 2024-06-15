@@ -1,16 +1,10 @@
 import sys
 import locale
-import os
 from PyQt5.QtWidgets import QFileDialog
 import mysql.connector
 from PyQt5 import QtCore, QtGui, QtWidgets
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-
-from reportlab.lib.pagesizes import letter
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget,
                              QLabel, QInputDialog, QListWidget, QHBoxLayout, QStackedWidget,
@@ -21,12 +15,10 @@ from PyQt5.QtGui import QBrush, QColor,QLinearGradient,QIcon
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QFont
 from datetime import datetime
-from PyQt5.QtWidgets import QMainWindow, QDialog, QFormLayout, QApplication, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QListWidget, QListWidgetItem, QLabel, QToolBar, QAction, QMenu, QMenuBar, QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QLineEdit, QCalendarWidget, QMessageBox, QGridLayout
+from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QListWidget, QListWidgetItem, QLabel, QToolBar, QAction, QMenu, QMenuBar, QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QLineEdit, QCalendarWidget, QMessageBox, QGridLayout
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtWidgets import QComboBox
 import resources
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QComboBox, QLineEdit, QPushButton, QDateEdit, QMessageBox
-from PyQt5.QtCore import QDate
 
 
 def conectar_mysql():
@@ -47,13 +39,11 @@ def conectar_mysql():
 def criar_tabelas_mysql(conn):
     cursor = conn.cursor()
 
-   # Tabela de imóveis
+    # Tabela de imóveis
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS imoveis (
-            cod_imovel CHAR(5) ,
-            nome VARCHAR(30) NOT NULL,
-            endereco VARCHAR(60) NOT NULL,
-            PRIMARY KEY (cod_imovel, endereco)
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            nome VARCHAR(255) NOT NULL
         )
     ''')
 
@@ -61,52 +51,17 @@ def criar_tabelas_mysql(conn):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS itens (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            item VARCHAR(20) NOT NULL,
-            forma_pg CHAR(20) NOT NULL,
+            item VARCHAR(255) NOT NULL,
+            quantidade VARCHAR(255) NOT NULL,
+            forma_pg VARCHAR(255) NOT NULL,
             valor DECIMAL(10, 2) NOT NULL,
-            data DATE NOT NULL,
-            cod_imovel char(5),
-            FOREIGN KEY (cod_imovel) REFERENCES imoveis (cod_imovel)
+            data DATE NOT NULL,  # Altere o tipo de dado para DATE
+            id_imovel INT,
+            FOREIGN KEY (id_imovel) REFERENCES imoveis (id)
         )
     ''')
 
-    # Tabela de proprietários
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS proprietarios (
-            cpf CHAR(11) PRIMARY KEY,
-            nome VARCHAR(50) NOT NULL,
-            email VARCHAR(50),
-            telefone CHAR(15)
-        )
-    ''')
-
-    # Tabela de contratos
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS contratos (
-            codigo_contrato INT AUTO_INCREMENT PRIMARY KEY,
-            cod_imovel char(5),
-            cpf_proprietario CHAR(11),
-            tipo_contrato ENUM('aluguel', 'venda') NOT NULL,
-            data_inicio DATE NOT NULL,
-            data_fim DATE,
-            valor DECIMAL(10, 2) NOT NULL,
-            status ENUM('ativo', 'concluido', 'cancelado') NOT NULL,
-            FOREIGN KEY (cod_imovel) REFERENCES imoveis (cod_imovel),
-            FOREIGN KEY (cpf_proprietario) REFERENCES proprietarios (cpf)
-        )
-    ''')
-
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS imovel_proprietario (
-            cod_imovel char(5),
-            cpf_proprietario CHAR(11),
-            PRIMARY KEY (cod_imovel, cpf_proprietario),
-            FOREIGN KEY (cod_imovel) REFERENCES imoveis (cod_imovel) ON DELETE CASCADE,
-            FOREIGN KEY (cpf_proprietario) REFERENCES proprietarios (cpf) ON DELETE CASCADE
-        );
-    ''')
     conn.commit()
-
 
 class Imovel:
     def __init__(self, nome):
@@ -121,7 +76,7 @@ class Imovel:
             if conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO itens (item, forma_pg, valor, data, cod_imovel)
+                    INSERT INTO itens (item, forma_pg, valor, data, id_imovel)
                     VALUES (%s, %s, %s, %s, %s)
                 ''', (item, forma_pagamento, valor, data, id_imovel))
                 conn.commit()
@@ -131,7 +86,7 @@ class Imovel:
         conn = conectar_mysql()
         if conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT cod_imovel FROM imoveis WHERE nome = %s', (nome_imovel,))
+            cursor.execute('SELECT id FROM imoveis WHERE nome = %s', (nome_imovel,))
             result = cursor.fetchone()
             conn.close()
             if result:
@@ -142,91 +97,17 @@ class Imovel:
         return sum(valor for item, valor, data in self.gastos)
 
 
-class AdicionarProprietarioDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Adicionar Cliente")
-        self.setGeometry(100, 100, 300, 300)
-        layout = QFormLayout(self)
-
-        self.nome_input = QLineEdit(self)
-        self.cpf_input = QLineEdit(self)
-        self.email_input = QLineEdit(self)
-        self.telefone_input = QLineEdit(self)
-        salvar_btn = QPushButton("Salvar", self)
-        salvar_btn.clicked.connect(self.salvar_proprietario)
-
-        layout.addRow("Nome:", self.nome_input)
-        layout.addRow("CPF:", self.cpf_input)
-        layout.addRow("Email:", self.email_input)
-        layout.addRow("Telefone:", self.telefone_input)
-        layout.addWidget(salvar_btn)
-
-    def salvar_proprietario(self):
-        nome = self.nome_input.text()
-        cpf = self.cpf_input.text()
-        email = self.email_input.text()
-        telefone = self.telefone_input.text()
-
-        conn = conectar_mysql()
-        if conn:
-            try:
-                cursor = conn.cursor()
-                query = "INSERT INTO proprietarios (nome, cpf, email, telefone) VALUES (%s, %s, %s, %s)"
-                cursor.execute(query, (nome, cpf, email, telefone))
-                conn.commit()
-                QMessageBox.information(self, "Sucesso", "Proprietário adicionado com sucesso!")
-                
-            except mysql.connector.Error as e:
-                QMessageBox.warning(self, "Erro", f"Erro ao adicionar proprietário: {e}")
-            finally:
-                cursor.close()
-                conn.close()
-            self.close()
-
-
-        
-class GerenciarContratosDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Gerenciar Contratos")
-        self.setGeometry(100, 100, 500, 400)
-        self.layout = QVBoxLayout()
-        
-        self.addButton = QPushButton("Adicionar Contrato")
-        self.addButton.clicked.connect(self.adicionar_contrato)
-        self.layout.addWidget(self.addButton)
-        
-        self.setLayout(self.layout)
-    
-    def adicionar_contrato(self, id_imovel, cpf_proprietario, tipo_contrato, data_inicio, data_fim, valor, status):
-        conn = conectar_mysql()
-        if conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute('''
-                    INSERT INTO contratos (id_imovel, cpf_proprietario, tipo_contrato, data_inicio, data_fim, valor, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ''', (id_imovel, cpf_proprietario, tipo_contrato, data_inicio, data_fim, valor, status))
-                conn.commit()
-            finally:
-                conn.close()
-
 class MainApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.imoveis = {}
         self.initUI()
         self.imovel_selecionado = None 
-        self.cod_imovel_selecionado = None  # Novo atributo para armazenar o ID
         self.mostrando_imoveis = False
         self.itens_imoveis = []
         self.carregar_imoveis()
         self.btn_adicionar_gasto.hide()
         self.btn_ver_gastos.hide()
-        self.gerenciar_proprietarios_dialog = None
-     
-
         
     def initUI(self):
         
@@ -265,13 +146,12 @@ class MainApp(QMainWindow):
 
         # Conectar a ação "Apagar" com o método de apagar imóvel
         self.action_apagar.triggered.connect(self.apagar_imovel)
-
         self.action_procurar.triggered.connect(self.toggle_search)
 
 
         # Conectar a ação "Atualizar" com o método de carregar imóveis
         self.action_atualizar.triggered.connect(self.atualizar_lista_imoveis)
-        self.action_cadastrar.triggered.connect(self.setup_adicionar_imovel_widget)
+        self.action_cadastrar.triggered.connect(self.adicionar_imovel)
         
         
         # Adicionar ações à barra de ferramentas e ao menu
@@ -313,7 +193,7 @@ class MainApp(QMainWindow):
         self.navbar = QListWidget()
 
         
-        self.navbar.setMaximumWidth(320)
+        self.navbar.setMaximumWidth(230)
         # Estilizar o NavBar
         self.navbar.setStyleSheet("""
             QListWidget {
@@ -384,26 +264,13 @@ class MainApp(QMainWindow):
 
         
         self.adicionar_imovel_item = QListWidgetItem(self.navbar)
-        self.adicionar_imovel_item.setFont(QFont("Arial", 24))
-        
+        self.adicionar_imovel_item.setFont(QFont("Arial", 24)) 
         self.navbar.addItem(self.adicionar_imovel_item)
         self.adicionar_imovel_btn = QPushButton('Adicionar Imóvel', self.navbar)
         self.adicionar_imovel_btn.setStyleSheet("background-color: lightblue; color: black;")
         self.adicionar_imovel_btn.setFont(QFont( "HP Segoe UI Variable Small", 12))
-        self.adicionar_imovel_btn.clicked.connect(self.mostrar_adicionar_imovel)
+        self.adicionar_imovel_btn.clicked.connect(self.adicionar_imovel)
         self.navbar.setItemWidget(self.adicionar_imovel_item, self.adicionar_imovel_btn)
-
-        
-        
-        # Adicionar botão 'Adicionar Proprietário' logo abaixo de 'Adicionar Imóvel'
-        self.adicionar_proprietario_item = QListWidgetItem("Adicionar Cliente", self.navbar)
-        self.adicionar_proprietario_item.setFont(QFont("Arial", 20))
-        self.adicionar_proprietario_btn = QPushButton("Adicionar Cliente", self.navbar)
-        self.adicionar_proprietario_btn.setStyleSheet("background-color: lightblue; color: black;")
-        self.adicionar_proprietario_btn.setFont(QFont( "HP Segoe UI Variable Small", 12))
-        self.adicionar_proprietario_btn.clicked.connect(self.mostrar_adicionar_proprietario)
-        self.navbar.setItemWidget(self.adicionar_proprietario_item, self.adicionar_proprietario_btn)
-
         self.meus_imoveis_item = QListWidgetItem(self.navbar)
         self.meus_imoveis_item.setFont(QFont("Arial", 24))  
 
@@ -437,11 +304,6 @@ class MainApp(QMainWindow):
 "")
         self.stack.addWidget(self.tela_inicial)
         
-         # Widget para adicionar proprietário
-        self.adicionar_proprietario_widget = QWidget()
-        self.setup_adicionar_imovel_widget()
-        self.setup_adicionar_proprietario_widget()
-        self.stack.addWidget(self.adicionar_proprietario_widget)
         
         self.tela_opcoes_imovel = QWidget()
         self.opcoes_imovel_layout = QVBoxLayout(self.tela_opcoes_imovel)
@@ -453,7 +315,7 @@ class MainApp(QMainWindow):
         self.botoes_layout = QHBoxLayout()
 
         self.btn_adicionar_gasto = QPushButton('Adicionar Gasto', self.tela_opcoes_imovel)
-        self.btn_adicionar_gasto.setFixedWidth(250)
+        self.btn_adicionar_gasto.setFixedWidth(280)
         self.btn_adicionar_gasto.setFixedHeight(80)
 
         self.btn_adicionar_gasto.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
@@ -465,12 +327,13 @@ class MainApp(QMainWindow):
 "color: rgb(255, 255, 255);\n"
 "\n"
  "border-radius: 5px;"
-"font: 300 13pt \"Segoe UI Variable Small\";\n"
+"font: 300 14pt \"Segoe UI Variable Small\";\n"
 "")
-        
         self.btn_adicionar_gasto.clicked.connect(self.mostrar_adicionar_gasto)
+        
+        
         self.btn_ver_gastos = QPushButton('Ver Gastos', self.tela_opcoes_imovel)
-        self.btn_ver_gastos.setFixedWidth(250)
+        self.btn_ver_gastos.setFixedWidth(280)
         self.btn_ver_gastos.setFixedHeight(80)
         self.btn_ver_gastos.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.btn_ver_gastos.setStyleSheet("background-color: qlineargradient(spread:reflect, x1:0.284, y1:0.948636, x2:1, y2:0.916, stop:0.4375 rgba(0, 0, 64, 255), stop:0.568182 rgba(0, 0, 93, 255), stop:0.670455 rgba(0, 0, 102, 255), stop:0.789773 rgba(0, 18, 117, 255), stop:0.954545 rgba(0, 57, 142, 255), stop:1 rgba(0, 81, 127, 255));\n"
@@ -481,7 +344,7 @@ class MainApp(QMainWindow):
 "color: rgb(255, 255, 255);\n"
 "border-radius: 5px;"
 "\n"
-"font: 300 13pt \"Segoe UI Variable Small\";\n"
+"font: 300 14pt \"Segoe UI Variable Small\";\n"
 "")
         self.btn_ver_gastos.clicked.connect(self.mostrar_ver_gastos)
         
@@ -490,31 +353,9 @@ class MainApp(QMainWindow):
         # Adicionar botões ao layout horizontal
         self.botoes_layout.addWidget(self.btn_adicionar_gasto)
         self.botoes_layout.addWidget(self.btn_ver_gastos)
- # Botão para gerenciar proprietários
-       
-        
-        self.btn_gerenciar_contratos = QPushButton('Gerenciar Contratos', self.tela_opcoes_imovel)
-        self.btn_gerenciar_contratos.setFixedWidth(250)
-        self.btn_gerenciar_contratos.setFixedHeight(80)
-       
-        self.btn_gerenciar_contratos.setStyleSheet("/* Seu estilo aqui */")
-        self.btn_gerenciar_contratos.clicked.connect(self.abrir_gerenciar_contratos)
-        self.btn_gerenciar_contratos.hide()  # Comece escondido
-        self.botoes_layout.addWidget(self.btn_gerenciar_contratos)
 
-        self.btn_gerenciar_contratos.setStyleSheet("background-color: qlineargradient(spread:reflect, x1:0.284, y1:0.948636, x2:1, y2:0.916, stop:0.4375 rgba(0, 0, 64, 255), stop:0.568182 rgba(0, 0, 93, 255), stop:0.670455 rgba(0, 0, 102, 255), stop:0.789773 rgba(0, 18, 117, 255), stop:0.954545 rgba(0, 57, 142, 255), stop:1 rgba(0, 81, 127, 255));\n"
-        "border-top-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 rgba(0, 0, 0, 255), stop:1 rgba(255, 255, 255, 255));\n"
-        "\n"
-        "gridline-color: rgb(255, 255, 255);\n"
-        "color: rgb(255, 255, 255);\n"
-        "color: rgb(255, 255, 255);\n"
-        "border-radius: 5px;"
-        "\n"
-        "font: 300 13pt \"Segoe UI Variable Small\";\n"
-        "")
         # Adicionar o layout horizontal ao layout vertical principal
         self.opcoes_imovel_layout.addLayout(self.botoes_layout)
-        
         
         self.botao_voltar = self.criar_botao_voltar()
         self.botao_voltar.setStyleSheet("background-color: white; color: #000026; border-radius:5px;font: bold 14pt \"Segoe UI Variable Small\";")
@@ -621,6 +462,8 @@ class MainApp(QMainWindow):
 
         """)
         
+
+        
         # Primeiro, crie um widget para o card e defina o seu layout
         self.card_widget = QWidget(self.adicionar_gasto_widget)
         self.card_layout = QVBoxLayout(self.card_widget)
@@ -633,7 +476,7 @@ class MainApp(QMainWindow):
         self.adicionar_gasto_layout.addWidget(item_label)
         self.adicionar_gasto_layout.addWidget(self.item_input)
         self.adicionar_gasto_layout.addStretch(1)  # Adiciona um espaço expansível
-        
+ 
 
         # Adicionando a legenda para o campo "Forma de Pagamento"
         forma_pagamento_label = QLabel("Forma de Pagamento:", self.adicionar_gasto_widget)
@@ -691,108 +534,6 @@ class MainApp(QMainWindow):
         self.mostrar_gastos_layout.addWidget(botao_gerar_pdf)
         self.show()
         
-    def carregar_proprietarios(self):
-        conn = conectar_mysql()
-        if conn:
-            try:
-                cursor = conn.cursor()
-                cursor.execute("SELECT id, nome FROM proprietarios")
-                while True:
-                    row = cursor.fetchone()
-                    if row is None:
-                        break
-                    self.proprietario_combo.addItem(row[1], row[0])
-            finally:
-                cursor.close()
-                conn.close()
-            
-    def setup_adicionar_imovel_widget(self):
-        # Criação do widget que será usado para adicionar imóveis
-        self.adicionar_imovel_widget = QWidget()
-        layout = QVBoxLayout(self.adicionar_imovel_widget)
-        layout.setContentsMargins(50, 50, 50, 50)
-        layout.setSpacing(20)
-        
-        # Estilizar os labels e inputs
-        label_style = "font-size: 14pt; font-weight: bold; color: #333;"
-        input_style = "font-size: 12pt; padding: 10px;"
-
-        # Entrada para o código do imóvel
-        cod_imovel_layout = QVBoxLayout()
-        cod_imovel_label = QLabel("Código do Imóvel:")
-        cod_imovel_label.setStyleSheet(label_style)
-        self.cod_imovel_input = QLineEdit()
-        self.cod_imovel_input.setFixedHeight(40)
-        self.cod_imovel_input.setPlaceholderText("Digite o código do imóvel aqui")
-        self.cod_imovel_input.setStyleSheet(input_style)
-        cod_imovel_layout.addWidget(cod_imovel_label)
-        cod_imovel_layout.addWidget(self.cod_imovel_input)
-
-        # Entrada para o nome do imóvel
-        nome_layout = QVBoxLayout()
-        nome_label = QLabel("Nome do Imóvel:")
-        nome_label.setStyleSheet(label_style)
-        self.nome_imovel_input = QLineEdit()
-        self.nome_imovel_input.setFixedHeight(40)
-        self.nome_imovel_input.setPlaceholderText("Digite o nome do imóvel aqui")
-        self.nome_imovel_input.setStyleSheet(input_style)
-        nome_layout.addWidget(nome_label)
-        nome_layout.addWidget(self.nome_imovel_input)
-
-        # Entrada para o endereço do imóvel
-        endereco_layout = QVBoxLayout()
-        endereco_label = QLabel("Endereço do Imóvel:")
-        endereco_label.setStyleSheet(label_style)
-        self.endereco_imovel_input = QLineEdit()
-        self.endereco_imovel_input.setFixedHeight(40)
-        self.endereco_imovel_input.setPlaceholderText("Digite o endereço do imóvel aqui")
-        self.endereco_imovel_input.setStyleSheet(input_style)
-        endereco_layout.addWidget(endereco_label)
-        endereco_layout.addWidget(self.endereco_imovel_input)
-
-        # ComboBox para seleção do proprietário
-        proprietario_layout = QVBoxLayout()
-        proprietario_label = QLabel("Proprietário:")
-        proprietario_label.setStyleSheet(label_style)
-        self.proprietario_combo = QComboBox()
-        self.proprietario_combo.setStyleSheet(input_style)
-        self.carregar_proprietarios()  # Este método deve carregar os proprietários no QComboBox
-        proprietario_layout.addWidget(proprietario_label)
-        proprietario_layout.addWidget(self.proprietario_combo)
-
-        # Botão para salvar o imóvel
-        salvar_imovel_btn = QPushButton("Salvar Imóvel")
-        salvar_imovel_btn.setFixedHeight(40)
-        salvar_imovel_btn.setStyleSheet("font-size: 14pt; font-weight: bold; color: white; background-color: #4CAF50; padding: 10px;")
-        salvar_imovel_btn.clicked.connect(self.salvar_imovel)
-
-        # Adicionando todos os layouts ao layout principal
-        layout.addLayout(cod_imovel_layout)
-        layout.addLayout(nome_layout)
-        layout.addLayout(endereco_layout)
-        layout.addLayout(proprietario_layout)
-        layout.addWidget(salvar_imovel_btn, alignment=Qt.AlignCenter)
-
-        # Adiciona o widget configurado ao stack
-        self.stack.addWidget(self.adicionar_imovel_widget)
-
-
-        
-    def carregar_proprietarios(self):
-        conn = conectar_mysql()
-        if conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute('SELECT cpf, nome FROM proprietarios')
-                proprietarios = cursor.fetchall()
-                self.proprietario_combo.clear()
-                for row in proprietarios:
-                    self.proprietario_combo.addItem(f"{row[1]} ({row[0]})", row[0])
-            except mysql.connector.Error as e:
-                QMessageBox.warning(self, "Erro", f"Erro ao carregar proprietários: {e}")
-            finally:
-                cursor.close()
-                conn.close()
 
 
     def toggle_search(self):
@@ -820,13 +561,9 @@ class MainApp(QMainWindow):
             if item:
                 item[0].setHidden(not (search_text in nome_imovel.lower()))
 
-  
-        
-    def gerenciar_contratos(self):
-            if not self.gerenciar_contratos_dialog:
-                self.gerenciar_contratos_dialog = GerenciarContratosDialog(self)
-            self.gerenciar_contratos_dialog.show()
-    
+
+
+
     def apagar_imovel(self):
             if self.tabela_gastos.currentRow() >= 0:
                 self.apagar_item_gasto()
@@ -873,180 +610,58 @@ class MainApp(QMainWindow):
         conn = conectar_mysql()
         if conn:
             cursor = conn.cursor()
-            try:
-                # Primeiro, obtenha o código do imóvel
-                cursor.execute('SELECT cod_imovel FROM imoveis WHERE nome = %s', (nome_imovel,))
-                resultado = cursor.fetchone()
-                if resultado is None:
-                    raise ValueError(f"Imóvel com nome '{nome_imovel}' não encontrado.")
-                
-                cod_imovel = resultado[0]
-                
-                # Em seguida, exclua todos os itens de gasto associados a esse imóvel
-                cursor.execute('DELETE FROM itens WHERE cod_imovel = %s', (cod_imovel,))
-                conn.commit()  # Confirma a exclusão dos itens
+            # Primeiro, obtenha o ID do imóvel
+            cursor.execute('SELECT id FROM imoveis WHERE nome = %s', (nome_imovel,))
+            id_imovel = cursor.fetchone()[0]
 
-                # Excluir as associações entre imóvel e proprietário
-                cursor.execute('DELETE FROM imovel_proprietario WHERE cod_imovel = %s', (cod_imovel,))
-                conn.commit()  # Confirma a exclusão das associações
+            # Em seguida, exclua todos os itens de gasto associados a esse imóvel
+            cursor.execute('DELETE FROM itens WHERE id_imovel = %s', (id_imovel,))
 
-                # Excluir o contrato associado ao imóvel
-                cursor.execute('DELETE FROM contratos WHERE cod_imovel = %s', (cod_imovel,))
-                conn.commit()  # Confirma a exclusão do contrato
+            # Finalmente, exclua o imóvel
+            cursor.execute('DELETE FROM imoveis WHERE nome = %s', (nome_imovel,))
+            conn.commit()
+            conn.close()
 
-                # Finalmente, exclua o imóvel
-                cursor.execute('DELETE FROM imoveis WHERE cod_imovel = %s', (cod_imovel,))
-                conn.commit()  # Confirma a exclusão do imóvel
+        # Remover o imóvel da lista de imóveis do programa
+        if nome_imovel in self.imoveis:
+            del self.imoveis[nome_imovel]
 
-                QMessageBox.information(self, "Sucesso", f"Imóvel '{nome_imovel}' excluído com sucesso!")
-            except mysql.connector.Error as e:
-                QMessageBox.warning(self, "Erro", f"Erro ao excluir imóvel: {e}")
-            except ValueError as ve:
-                QMessageBox.warning(self, "Erro", str(ve))
-            finally:
-                cursor.close()
-                conn.close()
+        # Remover o item do navbar
+        for index in range(self.navbar.count()):
+            item = self.navbar.item(index)
+            if item is not None and item.text() == nome_imovel:
+                self.navbar.takeItem(index)
+                break
 
-            # Remover o imóvel da lista de imóveis do programa
-            if nome_imovel in self.imoveis:
-                del self.imoveis[nome_imovel]
-
-            # Remover o item do navbar
-            for index in range(self.navbar.count()):
-                item = self.navbar.item(index)
-                if item is not None and item.text() == nome_imovel:
-                    self.navbar.takeItem(index)
-                    break
-
-            self.carregar_imoveis()
+        self.carregar_imoveis()
 
             
-   
-    # Criação do layout vertical para organizar os campos verticalmente
-    def setup_adicionar_proprietario_widget(self):
-    # Configuração inicial do layout principal
-        layout = QVBoxLayout()
-        self.adicionar_proprietario_widget = QWidget()  # Verifique a inicialização adequada
-
-        # Configuração de um layout de formulário
-        form_layout = QFormLayout()
-        form_layout.setRowWrapPolicy(QFormLayout.WrapAllRows)
-        form_layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)  
-        form_layout.setLabelAlignment(Qt.AlignLeft)
-        form_layout.setAlignment(Qt.AlignTop)
-
-        # Entrada para o Nome
-        self.nome_input = QLineEdit()
-        self.nome_input.setFixedHeight(40)
-        self.nome_input.setFixedWidth(350)
-        self.nome_input.setPlaceholderText("Nome do proprietário")
-        form_layout.addRow("Nome:", self.nome_input)
-
-        # Entrada para o CPF
-        self.cpf_input = QLineEdit()
-        self.cpf_input.setFixedHeight(40)
-        self.cpf_input.setFixedWidth(350)
-        self.cpf_input.setPlaceholderText("CPF (somente números)")
-        form_layout.addRow("CPF:", self.cpf_input)
-
-        # Entrada para o Email
-        self.email_input = QLineEdit()
-        self.email_input.setFixedHeight(40)
-        self.email_input.setFixedWidth(350)
-        self.email_input.setPlaceholderText("Email do proprietário")
-        form_layout.addRow("Email:", self.email_input)
-
-        # Entrada para o Telefone
-        self.telefone_input = QLineEdit()
-        self.telefone_input.setFixedHeight(40)
-        self.telefone_input.setFixedWidth(350)
-        self.telefone_input.setPlaceholderText("Telefone de contato")
-        form_layout.addRow("Telefone:", self.telefone_input)
-
-        # Botão de Salvar
-        salvar_btn = QPushButton("Salvar Proprietário")
-        salvar_btn.setFixedHeight(40)
-        salvar_btn.clicked.connect(self.salvar_proprietario)
-        layout.addLayout(form_layout)
-        layout.addWidget(salvar_btn, 0, Qt.AlignCenter)  # Adicionar o botão centralizado no layout
-
-        self.adicionar_proprietario_widget.setLayout(layout)
-        
-       
-        
-                
-    def salvar_proprietario(self):
-        nome = self.nome_input.text()
-        cpf = self.cpf_input.text()
-        email = self.email_input.text()
-        telefone = self.telefone_input.text()
-
-        if not (nome and cpf and email and telefone):
-            QMessageBox.warning(self, "Erro", "Todos os campos são obrigatórios.")
-            return
-
-        conn = conectar_mysql()
-        if conn:
-            try:
-                cursor = conn.cursor()
-                query = "INSERT INTO proprietarios (nome, cpf, email, telefone) VALUES (%s, %s, %s, %s)"
-                cursor.execute(query, (nome, cpf, email, telefone))
-                conn.commit()
-                QMessageBox.information(self, "Sucesso", "Proprietário adicionado com sucesso!")
-                self.nome_input.clear()
-                self.cpf_input.clear()
-                self.email_input.clear()
-                self.telefone_input.clear()
-                
-            except mysql.connector.Error as e:
-                QMessageBox.warning(self, "Erro", f"Erro ao adicionar proprietário: {e}")
-            finally:
-                cursor.close()
-                conn.close()
-                
-    def salvar_imovel(self):
-        cod_imovel = self.cod_imovel_input.text()
-        nome = self.nome_imovel_input.text()
-        endereco = self.endereco_imovel_input.text()
-        cpf_proprietario = self.proprietario_combo.currentData()
-
-        if cod_imovel and nome and endereco and cpf_proprietario:
+     
+            
+            
+    def adicionar_imovel(self):
+        nome, ok = QInputDialog.getText(self, 'Adicionar Imóvel', 'Nome do Imóvel:')
+        if ok and nome:
+            # Conectar ao banco de dados para verificar se o imóvel já existe
             conn = conectar_mysql()
             if conn:
                 cursor = conn.cursor()
-                try:
-                    cursor.execute('SELECT * FROM imoveis WHERE cod_imovel = %s', (cod_imovel,))
-                    resultado = cursor.fetchone()
-                    if resultado:
-                        QMessageBox.warning(self, "Imóvel já existe", "Já existe um imóvel com este código. Por favor, escolha um código diferente.")
-                    else:
-                        cursor.execute('SELECT * FROM imoveis WHERE nome = %s AND endereco = %s', (nome, endereco))
-                        resultado = cursor.fetchone()
-                        if resultado:
-                            QMessageBox.warning(self, "Imóvel já existe", "Já existe um imóvel com este nome e endereço. Por favor, escolha um nome ou endereço diferente.")
-                        else:
-                            cursor.execute('INSERT INTO imoveis (cod_imovel, nome, endereco) VALUES (%s, %s, %s)', (cod_imovel, nome, endereco))
-                            cursor.execute('INSERT INTO imovel_proprietario (cod_imovel, cpf_proprietario) VALUES (%s, %s)', (cod_imovel, cpf_proprietario))
-                            conn.commit()
-                            QMessageBox.information(self, "Sucesso", "Imóvel adicionado com sucesso!")
-                            
-                            # Limpar os campos de entrada após salvar
-                            self.cod_imovel_input.clear()
-                            self.nome_imovel_input.clear()
-                            self.endereco_imovel_input.clear()
-                            self.proprietario_combo.setCurrentIndex(0)
-                            self.botao_voltar.hide()
-
-                            # Mudar a tela atual para a tela de opções do imóvel
-                            self.stack.setCurrentWidget(self.tela_opcoes_imovel)
-                except mysql.connector.Error as e:
-                    QMessageBox.warning(self, "Erro", f"Erro ao adicionar imóvel: {e}")
-                finally:
-                    cursor.close()
+                # Verificar se já existe um imóvel com o mesmo nome
+                cursor.execute('SELECT * FROM imoveis WHERE nome = %s', (nome,))
+                resultado = cursor.fetchone()
+                if resultado:
+                    QMessageBox.warning(self, "Imóvel já existe", "Já existe um imóvel com esse nome. Por favor, escolha um nome diferente.")
                     conn.close()
-                    self.carregar_imoveis()  # Recarregar a lista de imóveis
-        else:
-            QMessageBox.warning(self, "Erro", "Por favor, preencha todos os campos.")
+                else:
+                    # Se não existe, inserir o novo imóvel no banco de dados
+                    cursor.execute('INSERT INTO imoveis (nome) VALUES (%s)', (nome,))
+                    conn.commit()
+                    conn.close()
+                    
+                    # Adicionar imóvel à lista de imóveis e na interface
+                    novo_imovel = Imovel(nome)
+                    self.imoveis[nome] = novo_imovel
+                    self.navbar.addItem(nome)
 
                 
     def carregar_imoveis(self):
@@ -1061,245 +676,10 @@ class MainApp(QMainWindow):
                 if nome_imovel not in self.imoveis:  # Verifica se já está na lista
                     self.imoveis[nome_imovel] = Imovel(nome_imovel)  # Adiciona ao dicionário
             conn.close()
-    def abrir_gerenciar_contratos(self):
-        if self.cod_imovel_selecionado:
-            self.setup_gerenciar_contratos_widget(self.cod_imovel_selecionado)
-        else:
-            QMessageBox.warning(self, "Seleção necessária", "Por favor, selecione um imóvel antes de gerenciar contratos.")   
-              
-   
-    def setup_gerenciar_contratos_widget(self, cod_imovel_selecionado):
-        if not hasattr(self, 'gerenciar_contratos_widget'):
-            self.gerenciar_contratos_widget = QWidget()
-            self.gerenciar_contratos_layout = QVBoxLayout(self.gerenciar_contratos_widget)
-            self.stack.addWidget(self.gerenciar_contratos_widget)
-
-        # Limpar o layout atual para evitar sobreposição de informações
-        self.clear_layout(self.gerenciar_contratos_layout)
-
-        conn = conectar_mysql()
-        contrato = None
-        if conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute('''
-                    SELECT * FROM contratos WHERE cod_imovel = %s
-                ''', (cod_imovel_selecionado,))
-                contrato = cursor.fetchone()  # Lê o primeiro resultado
-            finally:
-                cursor.close()
-                conn.close()
-
-        if contrato:
-            # Se contrato existir, mostrar os detalhes e gerar PDF
-            self.gerar_pdf_contrato(contrato)
-            QMessageBox.information(self, "Contrato Existente", f"O imóvel já possui um contrato. PDF gerado.")
-            # Mudar a tela atual para a tela de opções do imóvel
-            self.stack.setCurrentWidget(self.tela_opcoes_imovel)
             
-        else:
-            # Se não, mostrar o formulário para adicionar novo contrato
-            self.add_contract_form(self.gerenciar_contratos_layout)
-
-        self.stack.setCurrentWidget(self.gerenciar_contratos_widget)
-
-    def clear_layout(self, layout):
-        if layout is not None:
-            while layout.count():
-                item = layout.takeAt(0)
-                widget = item.widget()
-                if widget is not None:
-                    widget.deleteLater()
-
-    def add_contract_form(self, layout):
-        form_layout = QFormLayout()
-
-        # Layout para o nome do imóvel (apenas para exibição, não edição)
-        imovel_label = QLabel("Imóvel:")
-        self.imovel_nome_label = QLabel()
-        if self.imovel_selecionado:
-            self.imovel_nome_label.setText(self.imovel_selecionado.nome)
-        form_layout.addRow(imovel_label, self.imovel_nome_label)
-
-        # Layout para o tipo de contrato
-        tipo_contrato_label = QLabel("Tipo de Contrato:")
-        self.tipo_contrato_combo = QComboBox()
-        self.tipo_contrato_combo.addItems(['aluguel', 'venda'])
-        self.tipo_contrato_combo.setFixedHeight(40)
-        form_layout.addRow(tipo_contrato_label, self.tipo_contrato_combo)
-
-        # Layout para a data de início
-        data_inicio_label = QLabel("Data de Início:")
-        self.data_inicio_input = QDateEdit()
-        self.data_inicio_input.setCalendarPopup(True)
-        self.data_inicio_input.setDate(QDate.currentDate())
-        self.data_inicio_input.setFixedHeight(40)
-        form_layout.addRow(data_inicio_label, self.data_inicio_input)
-
-        # Layout para o valor do contrato
-        valor_label = QLabel("Valor:")
-        self.valor_input = QLineEdit()
-        self.valor_input.setFixedHeight(40)
-        form_layout.addRow(valor_label, self.valor_input)
-
-        # Layout para o status do contrato
-        status_label = QLabel("Status:")
-        self.status_combo = QComboBox()
-        self.status_combo.addItems(['ativo', 'concluído', 'cancelado'])
-        self.status_combo.setFixedHeight(40)
-        form_layout.addRow(status_label, self.status_combo)
-
-        # Botão para salvar o contrato
-        salvar_btn = QPushButton("Salvar Contrato")
-        salvar_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;  /* Green background */
-                color: white;  /* White text */
-                border-radius: 5px;  /* Rounded corners */
-                padding: 10px;  /* Padding */
-            }
-            QPushButton:hover {
-                background-color: #45a049;  /* Darker green on hover */
-            }
-        """)
-        salvar_btn.clicked.connect(self.salvar_contrato)
-        salvar_btn.setFixedHeight(40)
         
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        button_layout.addWidget(salvar_btn)
-        button_layout.addStretch()
-
-        layout.addLayout(form_layout)
-        layout.addLayout(button_layout)
-
-        self.gerenciar_contratos_widget.setLayout(layout)
             
-    def salvar_contrato(self):
-        nome_imovel = self.imovel_nome_label.text()
-        cod_imovel = self.obter_id_imovel(nome_imovel)  # Busca o ID do imóvel pelo nome
-
-        # Busca o ID do proprietário associado ao imóvel
-        cpf_proprietario = self.obter_cpf_proprietario_de_imovel(cod_imovel)
-
-        tipo_contrato = self.tipo_contrato_combo.currentText()
-        data_inicio = self.data_inicio_input.date().toString("yyyy-MM-dd")
-        valor = self.valor_input.text()
-        status = self.status_combo.currentText()
-
-        conn = conectar_mysql()
-        if conn:
-            try:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO contratos (cod_imovel, cpf_proprietario, tipo_contrato, data_inicio, data_fim, valor, status)
-                    VALUES (%s, %s, %s, %s, NULL, %s, %s)
-                ''', (cod_imovel, cpf_proprietario, tipo_contrato, data_inicio, valor, status))
-                conn.commit()
-                QMessageBox.information(self, "Sucesso", "Contrato adicionado com sucesso!")
-                
-                # Limpar os campos de entrada após salvar
-                self.tipo_contrato_combo.setCurrentIndex(0)
-                self.data_inicio_input.setDate(QDate.currentDate())
-                self.valor_input.clear()
-                self.status_combo.setCurrentIndex(0)
-             
-
-                # Mudar a tela atual para a tela de opções do imóvel
-                self.stack.setCurrentWidget(self.tela_opcoes_imovel)
-            except mysql.connector.Error as e:
-                QMessageBox.warning(self, "Erro", f"Erro ao adicionar contrato: {e}")
-            finally:
-                cursor.close()
-                conn.close()
-
-    def gerar_pdf_contrato(self, contrato):
-        user_directory = os.path.expanduser("~")
-        nome_arquivo = f"contrato_imovel_{self.imovel_selecionado.nome}.pdf"
-        caminho_arquivo = os.path.join(user_directory, nome_arquivo)
-
-        doc = SimpleDocTemplate(caminho_arquivo, pagesize=letter)
-        styles = getSampleStyleSheet()
-        flowables = []
-
-        # Título
-        title = "CONTRATO DE IMÓVEL"
-        flowables.append(Paragraph(title, styles['Title']))
-        flowables.append(Spacer(1, 12))
-
-        # Subtítulo
-        subtitle = f"Contrato do Imóvel: {self.imovel_selecionado.nome}"
-        flowables.append(Paragraph(subtitle, styles['Heading2']))
-        flowables.append(Spacer(1, 12))
-
-        # Dados do contrato
-        data = [
-            ["ID do Imóvel", contrato[1]],
-            ["ID do Proprietário", contrato[2]],
-            ["Tipo de Contrato", contrato[3]],
-            ["Data de Início", contrato[4]],
-            ["Data de Fim", contrato[5] if contrato[5] else 'Indefinido'],
-            ["Valor", contrato[6]],
-            ["Status", contrato[7]]
-        ]
-
-        table = Table(data, colWidths=[150, 300])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTSIZE', (0, 0), (-1, -1), 12)
-        ]))
-
-        flowables.append(table)
-        flowables.append(Spacer(1, 24))
-
-        # Texto do contrato
-        contrato_texto = """
-        Pelo presente instrumento particular, as partes acima identificadas têm entre si justo e acordado o presente Contrato de Imóvel, que se regerá pelas cláusulas e condições seguintes, que mutuamente outorgam e aceitam.
-
-        As partes declaram, para todos os fins de direito, que o imóvel objeto deste contrato encontra-se em perfeito estado de uso e conservação.
-
-        O presente contrato tem início em {data_inicio} e, se aplicável, término em {data_fim}. O valor acordado é de {valor}, com status atual de {status}.
-        """.format(data_inicio=contrato[4], data_fim=contrato[5] if contrato[5] else 'Indefinido', valor=contrato[6], status=contrato[7])
-
-        flowables.append(Paragraph(contrato_texto, styles['BodyText']))
-        flowables.append(Spacer(1, 48))
-
-        # Linha para assinatura
-        assinatura = HRFlowable(width="80%", thickness=1.5, color=colors.black, spaceBefore=30, spaceAfter=30, hAlign='CENTER')
-        flowables.append(assinatura)
-        flowables.append(Paragraph("Assinatura do Proprietário", styles['BodyText']))
-        flowables.append(Spacer(1, 12))
-        flowables.append(assinatura)
-        flowables.append(Paragraph("Assinatura do Locatário/Vendedor", styles['BodyText']))
-
-        doc.build(flowables)
-
-        os.startfile(caminho_arquivo)
-        QMessageBox.information(self, "PDF Gerado", f"O PDF do contrato foi gerado com o nome '{nome_arquivo}' no diretório '{user_directory}'.")
-
-    def obter_cpf_proprietario_de_imovel(self, cod_imovel):
-        conn = conectar_mysql()
-        cpf_proprietario = None
-        if conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute('''
-                    SELECT cpf_proprietario FROM imovel_proprietario WHERE cod_imovel = %s
-                ''', (cod_imovel,))
-                result = cursor.fetchone()
-                if result:
-                    cpf_proprietario = result[0]
-            finally:
-                cursor.close()
-                conn.close()
-        return cpf_proprietario
-
+        
     def mostrar_calendario(self, event):
         if not hasattr(self, 'calendario'):
             self.calendario = QCalendarWidget(self)
@@ -1332,48 +712,34 @@ class MainApp(QMainWindow):
                     item.setFont(QFont("HP Simplified", 13))  # Definir a fonte e tamanho
             self.mostrando_imoveis = True
 
+
     def selecionar_data(self, date):
         selected_date = date.toString("yyyy-MM-dd")
         self.data_input.setText(selected_date)
         self.calendario.close()
         self.calendario.hide()
         
-    def obter_id_imovel(self, nome_imovel):
-        conn = conectar_mysql()
-        if conn:
-            try:
-                cursor = conn.cursor()
-                cursor.execute('SELECT cod_imovel FROM imoveis WHERE nome = %s', (nome_imovel,))
-                result = cursor.fetchone()
-                if result:
-                    return result[0]  # Retorna o ID encontrado
-                else:
-                    return None  # Se não encontrar, retorna None
-            finally:
-                conn.close()
 
     def imovel_selecionado(self, current, previous):
         if current and current.text() in self.imoveis:
             nome_imovel = current.text()
             self.imovel_selecionado = self.imoveis[nome_imovel]
-            self.cod_imovel_selecionado = self.obter_id_imovel(nome_imovel)  # Armazena o ID do imóvel
-
             self.botao_voltar.hide()
             self.atualizar_tabela_gastos(self.imovel_selecionado.nome)
+
+            # Atualizar o texto do cabeçalho para o nome do imóvel
             self.header.setText(f"{nome_imovel}")
             self.stack.setCurrentWidget(self.tela_opcoes_imovel)
             self.btn_adicionar_gasto.show()
             self.btn_ver_gastos.show()
-            self.btn_gerenciar_contratos.show()  # Mostre o botão de gerenciar contratos
         else:
             self.imovel_selecionado = None
-            self.cod_imovel_selecionado = None
             self.stack.setCurrentWidget(self.tela_inicial)
+     
             self.btn_adicionar_gasto.hide()
             self.btn_ver_gastos.hide()
-            self.btn_gerenciar_contratos.hide()  # Esconda o botão
-            self.header.setText("GESTAO DE IMOVEIS PARA BANCO DE DADOS")
-
+            # Restaurar o texto original do cabeçalho
+            self.header.setText("CONTROLE DE GASTOS HERMANN")
 
     def mostrar_adicionar_gasto(self):
         if self.imovel_selecionado:
@@ -1396,9 +762,6 @@ class MainApp(QMainWindow):
         else:
             print("Por favor, selecione um imóvel primeiro.")
 
-    def mostrar_adicionar_imovel(self):
-        # Método para mudar o widget exibido no QStackedWidget para o de adicionar imóvel
-        self.stack.setCurrentWidget(self.adicionar_imovel_widget)
 
     def criar_botao_voltar(self):
         botao_voltar = QPushButton('Voltar', self)
@@ -1420,6 +783,7 @@ class MainApp(QMainWindow):
         
         self.botao_voltar.hide()  # Ocultar o botão "Voltar" ao retornar
 
+    
     def confirmar_gasto(self):
         nome_imovel = self.navbar.currentItem().text()
         if nome_imovel in self.imoveis:
@@ -1454,17 +818,18 @@ class MainApp(QMainWindow):
         else:
             QMessageBox.warning(self, 'Atenção', 'Por favor, selecione um imóvel primeiro.')
 
+
     def atualizar_tabela_gastos(self, nome_imovel):
             # Obter o ID do imóvel selecionado
             locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')  # Use 'pt_BR.UTF-8' for Portuguese (Brazil) formatting
             
-            cod_imovel = self.imoveis[nome_imovel].obter_id_imovel(nome_imovel)
+            id_imovel = self.imoveis[nome_imovel].obter_id_imovel(nome_imovel)
 
             # Conectar ao banco de dados e buscar os gastos para esse imóvel
             conn = conectar_mysql()
             if conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT id, DATE_FORMAT(data, "%d/%m/%Y") , forma_pg, valor,item FROM itens WHERE cod_imovel = %s ORDER BY data DESC', (cod_imovel,))
+                cursor.execute('SELECT id, DATE_FORMAT(data, "%d/%m/%Y") , forma_pg, valor,item FROM itens WHERE id_imovel = %s ORDER BY data DESC', (id_imovel,))
                 self.tabela_gastos.setRowCount(0)
                 total = 0
 
@@ -1508,6 +873,9 @@ class MainApp(QMainWindow):
                 self.total_label.setText(f"Total: R${formatted_total}")
             
             conn.close()
+
+
+
     
     def gerar_pdf(self):
         filepath, _ = QFileDialog.getSaveFileName(self, "Salvar PDF", "", "PDF Files (*.pdf)")
@@ -1563,9 +931,8 @@ class MainApp(QMainWindow):
         # Informar ao usuário que o PDF foi gerado com sucesso
         QMessageBox.information(self, "PDF Gerado", f"O PDF dos gastos foi gerado com sucesso em: {filepath}")
 
-    def mostrar_adicionar_proprietario(self):
-        self.stack.setCurrentWidget(self.adicionar_proprietario_widget)
-        
+
+       
     def on_table_item_selected(self):
     # Supondo que você tenha um método para ser chamado quando um item da tabela é selecionado
         selected_row = self.tabela_gastos.currentRow()  # Pegar a linha selecionada
@@ -1574,7 +941,8 @@ class MainApp(QMainWindow):
             id_item = self.tabela_gastos.item(selected_row, 0).data(Qt.UserRole)
             print("ID do item selecionado:", id_item)
             # Aqui você pode usar o id_item para operações como exclusão
-                    
+            
+            
     def on_item_changed(self, item):
         # Obter o ID do item editado
         selected_row = self.tabela_gastos.currentRow()  # Pegar a linha selecionada
